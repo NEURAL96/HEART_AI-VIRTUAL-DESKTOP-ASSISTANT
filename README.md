@@ -793,8 +793,8 @@ It is to build a unified intelligence layer between the user and the operating s
 
 <div align="center">
 
-## TILAK KUMAR
-### D3V1L96 | AI & CYBERSECURITY ENGINEERING
+## SONIKA BHARDWAJ
+### NEURAL96| AI & CYBERSECURITY ENGINEERING
 
 Python Developer • AI Enthusiast • Cybersecurity Engineer
 
@@ -823,6 +823,6 @@ Third-party dependencies, AI models, APIs, and external services remain subject 
 
 *Engineered with purpose. Designed to evolve.*
 
-**© 2026 D3V1L96**
+**© 2026 NEURAL96**
 
 </div>

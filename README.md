@@ -17,7 +17,7 @@
 
 <br/>
 
-**Designed & Engineered by [D3V1L96](https://github.com/D3V1L96)**
+**Designed & Engineered by [D3V1L96](https://github.com/NEURAL96)**
 
 </div>
 

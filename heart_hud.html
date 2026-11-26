@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>H.E.A.R.T // AI Operating System</title>
+<style>
+  :root {
+    --c-bg: #000;
+    --c-primary: #7fd6ff;
+    --c-core: #e8f8ff;
+    --c-accent: #3aa0ff;
+    --c-warn: #ffb347;
+    --c-danger: #ff4d4d;
+    --c-dim: rgba(127, 214, 255, 0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    overflow: hidden;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--c-primary);
+    cursor: crosshair;
+    user-select: none;
+  }
+  #stage {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, #02060a 0%, #000 70%);
+  }
+  canvas { position: absolute; inset: 0; display: block; }
+  #fx { mix-blend-mode: screen; pointer-events: none; }
+  #overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .corner {
+    position: absolute;
+    width: 40px; height: 40px;
+    border-color: rgba(127,214,255,0.5);
+    border-style: solid;
+    border-width: 0;
+  }
+  .corner.tl { top: 16px; left: 16px; border-top-width: 2px; border-left-width: 2px; }
+  .corner.tr { top: 16px; right: 16px; border-top-width: 2px; border-right-width: 2px; }
+  .corner.bl { bottom: 16px; left: 16px; border-bottom-width: 2px; border-left-width: 2px; }
+  .corner.br { bottom: 16px; right: 16px; border-bottom-width: 2px; border-right-width: 2px; }
+
+  #status {
+    position: absolute;
+    top: 22px; left: 70px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    opacity: 0.75;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(127,214,255,0.6);
+  }
+  #status .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--c-primary);
+    box-shadow: 0 0 8px var(--c-primary);
+    margin-right: 8px;
+    vertical-align: middle;
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:0.4;} 50%{opacity:1;} }
+
+  #clock {
+    position: absolute;
+    top: 22px; right: 70px;
+    font-size: 11px;
+    letter-spacing: 3px;
+    opacity: 0.8;
+    text-shadow: 0 0 6px rgba(127,214,255,0.6);
+  }
+
+  #hint {
+    position: absolute;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    letter-spacing: 3px;
+    opacity: 0.45;
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1.8;
+  }
+  #hint kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    border: 1px solid rgba(127,214,255,0.4);
+    border-radius: 2px;
+    margin: 0 2px;
+    font-family: inherit;
+    font-size: 9px;
+  }
+
+  #bootText {
+    position: absolute;
+    bottom: 70px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.6s;
+    text-shadow: 0 0 10px rgba(127,214,255,0.8);
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .flash {
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at center, rgba(200,240,255,0.9), rgba(200,240,255,0) 60%);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  #vignette {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.85) 100%);
+    z-index: 8;
+  }
+  #scanlines {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0) 0px,
+      rgba(255,255,255,0) 2px,
+      rgba(127,214,255,0.025) 3px,
+      rgba(255,255,255,0) 4px
+    );
+    z-index: 9;
+    mix-blend-mode: overlay;
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="main"></canvas>
+  <canvas id="fx"></canvas>
+  <div class="flash" id="flash"></div>
+  <div id="vignette"></div>
+  <div id="scanlines"></div>
+  <div id="overlay">
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div id="status"><span class="dot"></span>H.E.A.R.T // NEURAL CORE ONLINE</div>
+    <div id="clock">--:--:--</div>
+    <div id="bootText">INITIALIZING NEURAL MATRIX</div>
+    <div id="hint">
+      <kbd>1</kbd> IDLE &nbsp; <kbd>5</kbd> MUSIC (MIC) &nbsp; <kbd>7</kbd> CYBER &nbsp; <kbd>8</kbd> SLEEP &nbsp; <kbd>9</kbd> EMERG &nbsp;
+      <kbd>M</kbd> UPLOAD FILE
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const TAU = Math.PI * 2;
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smoothstep = (a, b, t) => {
+    t = clamp((t - a) / (b - a), 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  const rand = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
+  const randi = (a, b) => Math.floor(rand(a, b));
+  const easeOutBack = t => {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  };
+
+  const mainCanvas = document.getElementById('main');
+  const fxCanvas = document.getElementById('fx');
+  const ctx = mainCanvas.getContext('2d', { alpha: false });
+  const fxCtx = fxCanvas.getContext('2d', { alpha: true });
+  const blurCanvas = document.createElement('canvas');
+  const blurCtx = blurCanvas.getContext('2d', { willReadFrequently: true });
+
+  let W = 0, H = 0, CX = 0, CY = 0, DPR = 1;
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    CX = W / 2;
+    CY = H / 2;
+
+    for (const c of [mainCanvas, fxCanvas]) {
+      c.width = W * DPR;
+      c.height = H * DPR;
+      c.style.width = W + 'px';
+      c.style.height = H + 'px';
+    }
+    blurCanvas.width = Math.floor(W * 0.25);
+    blurCanvas.height = Math.floor(H * 0.25);
+
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    fxCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Simplified States
+  const STATES = {
+    IDLE: 'IDLE',
+    MUSIC: 'MUSIC',
+    CYBER: 'CYBER',
+    SLEEP: 'SLEEP',
+    EMERGENCY: 'EMERGENCY'
+  };
+
+  const STATE_COLORS = {
+    IDLE:      { core: [232, 248, 255], glow: [127, 214, 255], accent: [58, 160, 255] },
+    MUSIC:     { core: [255, 200, 255], glow: [255, 100, 255], accent: [200, 50, 200] }, // Purple/Pink for Music
+    CYBER:     { core: [255, 220, 220], glow: [255, 80, 80],   accent: [255, 50, 50]  },
+    SLEEP:     { core: [180, 210, 230], glow: [80, 120, 160],  accent: [60, 100, 140] },
+    EMERGENCY: { core: [255, 200, 200], glow: [255, 60, 60],   accent: [255, 40, 40]  }
+  };
+
+  const state = {
+    current: STATES.IDLE, target: STATES.IDLE, transition: 1, time: 0,
+    bootPhase: 0, bootTime: 0, bootComplete: false, hudDeploy: 0, reactorOnline: 0,
+    mouse: { x: 0, y: 0, active: false },
+    audio: { bass: 0, mid: 0, treble: 0, amp: 0, beat: 0, beatDecay: 0 },
+    color: { ...STATE_COLORS.IDLE }, targetColor: { ...STATE_COLORS.IDLE },
+    bloomIntensity: 0.6, flash: 0,
+    jarvisPlayed: false
+  };
+
+  const jarvisIntro = new Audio();
+  jarvisIntro.src = 'loading sound.mp3';
+  jarvisIntro.volume = 0.6;
+  jarvisIntro.loop = false;
+  jarvisIntro.preload = 'auto';
+
+  jarvisIntro.addEventListener('error', () => {
+    console.warn('Audio file not found. Please ensure "loading sound.mp3" is in the same folder.');
+  });
+
+  const uiSound = {
+    ctx: null,
+    init() {
+      if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+    },
+    playBootSound() {
+      this.init();
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+      gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 1.5);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 1.5);
+    },
+    playSmoothTransition() {
+      this.init();
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(110, this.ctx.currentTime);
+      gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.8);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.8);
+    },
+    playSystemReady() {
+      this.init();
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+      gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.5);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.5);
+    },
+    playMediaLoad() {
+      this.init();
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(660, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1320, this.ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.4);
+    }
+  };
+
+  // Microphone Module for Key 5
+  const microphone = {
+    ctx: null, stream: null, source: null, analyser: null, freq: null, data: null, active: false,
+    bass: 0, mid: 0, treble: 0, amp: 0, beat: 0, beatDecay: 0, wave: null,
+    async start() {
+      if (this.active) return;
+      try {
+        uiSound.init();
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        });
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+
+        this.source = this.ctx.createMediaStreamSource(this.stream);
+        this.analyser = this.ctx.createAnalyser();
+        this.analyser.fftSize = 2048;
+        this.analyser.smoothingTimeConstant = 0.85;
+        this.freq = new Uint8Array(this.analyser.frequencyBinCount);
+        this.data = new Uint8Array(this.analyser.fftSize);
+        if (!this.wave) this.wave = new Float32Array(128);
+
+        this.source.connect(this.analyser);
+        // Note: We do NOT connect to destination to avoid feedback loop if speakers are on
+        this.active = true;
+        setState(STATES.MUSIC);
+        showBootText('AUDIO SENSOR ACTIVE');
+        setTimeout(hideBootText, 2000);
+      } catch (e) {
+        console.warn("Microphone access denied.", e);
+        showBootText('MIC ACCESS DENIED');
+        setTimeout(hideBootText, 2000);
+      }
+    },
+    update() {
+      if (!this.active || !this.analyser) {
+        this.bass = lerp(this.bass, 0, 0.15);
+        this.mid = lerp(this.mid, 0, 0.15);
+        this.treble = lerp(this.treble, 0, 0.15);
+        this.amp = lerp(this.amp, 0, 0.15);
+        this.beat *= 0.9;
+        if (this.wave) for (let i = 0; i < this.wave.length; i++) this.wave[i] = lerp(this.wave[i], 0, 0.1);
+        return;
+      }
+      this.analyser.getByteFrequencyData(this.freq);
+      if (this.data) this.analyser.getByteTimeDomainData(this.data);
+
+      const sampleRate = this.ctx.sampleRate;
+      const binCount = this.freq.length;
+      const bassBin = Math.max(1, Math.floor((150 / (sampleRate / 2)) * binCount));
+      const midBin = Math.max(bassBin + 1, Math.floor((2000 / (sampleRate / 2)) * binCount));
+
+      let bassSum = 0, midSum = 0, trebleSum = 0;
+      for (let i = 0; i < bassBin; i++) bassSum += this.freq[i];
+      for (let i = bassBin; i < midBin; i++) midSum += this.freq[i];
+      for (let i = midBin; i < binCount; i++) trebleSum += this.freq[i];
+
+      const bass = bassSum / (bassBin * 255);
+      const mid = midSum / ((midBin - bassBin) * 255);
+      const treble = trebleSum / ((binCount - midBin) * 255);
+
+      this.bass = lerp(this.bass, Math.pow(bass, 0.7), 0.25);
+      this.mid = lerp(this.mid, Math.pow(mid, 0.8), 0.25);
+      this.treble = lerp(this.treble, Math.pow(treble, 0.8), 0.25);
+      this.amp = (this.bass * 0.5 + this.mid * 0.3 + this.treble * 0.2);
+
+      if (this.bass > 0.5 && this.beatDecay <= 0) {
+        this.beat = 1;
+        this.beatDecay = 0.4;
+      }
+      this.beatDecay = Math.max(0, this.beatDecay - 0.016);
+      this.beat *= 0.88;
+
+      const waveResolution = 128;
+      if (!this.wave) this.wave = new Float32Array(waveResolution);
+      for (let i = 0; i < waveResolution; i++) {
+        const freqIndex = Math.floor(Math.pow(i / waveResolution, 1.5) * (binCount / 2));
+        const raw = this.freq[freqIndex] / 255;
+        this.wave[i] = lerp(this.wave[i], raw, 0.2);
+      }
+    },
+    stop() {
+      if (this.stream) {
+        this.stream.getTracks().forEach(t => t.stop());
+        this.stream = null;
+      }
+      if (this.source) {
+        this.source.disconnect();
+        this.source = null;
+      }
+      this.analyser = null;
+      this.active = false;
+      this.bass = this.mid = this.treble = this.amp = this.beat = 0;
+    }
+  };
+
+  const mediaTunnel = {
+    type: null, source: null, url: null, canvas: null, ctx: null, prevFrame: null, active: false,
+    brightness: 0, dominantColor: [127, 214, 255], motionEnergy: 0, visualEnergy: 0,
+    visualWave: new Float32Array(128), textStream: [], textCursor: 0, fileName: '', aiData: null,
+
+    reset() {
+      if (this.url) URL.revokeObjectURL(this.url);
+      if (this.source) {
+        if (this.source.pause) this.source.pause();
+        this.source.src = '';
+        this.source = null;
+      }
+      this.type = null; this.url = null; this.active = false;
+      this.brightness = 0; this.motionEnergy = 0; this.visualEnergy = 0;
+      this.textStream = []; this.textCursor = 0; this.prevFrame = null;
+      this.fileName = ''; this.aiData = null;
+    },
+
+    async load(file) {
+      this.reset();
+      this.fileName = file.name;
+      const fileType = file.type;
+
+      showBootText(`TUNNELING: ${file.name.toUpperCase()}`);
+      uiSound.playMediaLoad();
+
+      try {
+        if (fileType.startsWith('audio/')) {
+          // For file upload, we just store info, we don't play it automatically to keep focus on Mic
+          this.type = 'audio-file';
+          this.active = true;
+        } else if (fileType.startsWith('image/')) {
+          await this.loadImage(file);
+          this.type = 'image';
+          this.active = true;
+        } else if (fileType.startsWith('video/')) {
+          await this.loadVideo(file);
+          this.type = 'video';
+          this.active = true;
+        } else {
+          await this.loadDocument(file);
+          this.type = 'document';
+          this.active = true;
+        }
+
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          showBootText('SECURING FILE IN H.E.A.R.T MEMORY...');
+
+          const res = await fetch('http://localhost:8001/api/upload', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (res.ok) {
+            this.aiData = await res.json();
+            showBootText('FILE SECURED. READY FOR COMMANDS.');
+          } else {
+            throw new Error('Backend error');
+          }
+        } catch (e) {
+          console.warn("Python backend offline. Using local fallback.", e);
+          this.aiData = { status: 'OFFLINE', message: 'Local mode active.' };
+        }
+
+        showBootText(`${this.type.toUpperCase()} TUNNEL ESTABLISHED`);
+        setTimeout(hideBootText, 2000);
+
+      } catch (err) {
+        console.error('Media tunnel error:', err);
+        showBootText('TUNNEL FAILED: ' + err.message);
+        setTimeout(hideBootText, 2000);
+        this.reset();
+      }
+    },
+
+    async loadImage(file) {
+      return new Promise((resolve, reject) => {
+        this.url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          this.source = img;
+          this.type = 'image';
+          this.active = true;
+          this.canvas = document.createElement('canvas');
+          const size = 256;
+          this.canvas.width = size;
+          this.canvas.height = size;
+          this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+          this.ctx.drawImage(img, 0, 0, size, size);
+          this.analyzeFrame();
+          resolve();
+        };
+        img.onerror = reject;
+        img.src = this.url;
+      });
+    },
+
+    async loadVideo(file) {
+      return new Promise((resolve, reject) => {
+        this.url = URL.createObjectURL(file);
+        const video = document.createElement('video');
+        video.src = this.url;
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.crossOrigin = 'anonymous';
+
+        video.onloadeddata = async () => {
+          try {
+            await video.play();
+            this.source = video;
+            this.type = 'video';
+            this.active = true;
+            this.canvas = document.createElement('canvas');
+            const size = 256;
+            this.canvas.width = size;
+            this.canvas.height = size;
+            this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+            resolve();
+          } catch(e) {
+            reject(e);
+          }
+        };
+        video.onerror = reject;
+      });
+    },
+
+    async loadDocument(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          this.textStream = e.target.result.split(/\s+/).filter(w => w.length > 0);
+          this.type = 'document';
+          this.active = true;
+          this.textCursor = 0;
+          resolve();
+        };
+        reader.onerror = () => {
+          this.textStream = ['[BINARY FILE DETECTED]', '[CONTENT NOT DISPLAYABLE]'];
+          this.type = 'document';
+          this.active = true;
+          resolve();
+        };
+        if (file.type === 'application/pdf' || file.name.endsWith('.exe') || file.name.endsWith('.zip') || file.name.endsWith('.bin')) {
+          this.textStream = ['[BINARY FILE DETECTED]', file.name, '[ANALYSIS IN PROGRESS...]', `[SIZE: ${(file.size/1024).toFixed(1)} KB]`];
+          this.type = 'document';
+          this.active = true;
+          resolve();
+        } else {
+          reader.readAsText(file);
+        }
+      });
+    },
+
+    analyzeFrame() {
+      if (!this.canvas || !this.ctx) return;
+      const w = this.canvas.width;
+      const h = this.canvas.height;
+      const frame = this.ctx.getImageData(0, 0, w, h);
+      const data = frame.data;
+
+      let rSum = 0, gSum = 0, bSum = 0, brightSum = 0;
+      const step = 16;
+      let count = 0;
+
+      for (let i = 0; i < data.length; i += 4 * step) {
+        const r = data[i], g = data[i+1], b = data[i+2];
+        rSum += r; gSum += g; bSum += b;
+        brightSum += (r * 0.299 + g * 0.587 + b * 0.114);
+        count++;
+      }
+
+      const avgR = rSum / count;
+      const avgG = gSum / count;
+      const avgB = bSum / count;
+      const brightness = brightSum / count / 255;
+
+      this.brightness = lerp(this.brightness, brightness, 0.1);
+      this.dominantColor = [Math.floor(avgR), Math.floor(avgG), Math.floor(avgB)];
+
+      if (this.prevFrame) {
+        let diffSum = 0;
+        for (let i = 0; i < data.length; i += 4 * step) {
+          const rDiff = Math.abs(data[i] - this.prevFrame[i]);
+          const gDiff = Math.abs(data[i+1] - this.prevFrame[i+1]);
+          const bDiff = Math.abs(data[i+2] - this.prevFrame[i+2]);
+          diffSum += (rDiff + gDiff + bDiff) / 3;
+        }
+        const motion = clamp(diffSum / (count * 80), 0, 1);
+        this.motionEnergy = lerp(this.motionEnergy, motion, 0.15);
+      }
+      this.prevFrame = new Uint8ClampedArray(data);
+
+      const scanlines = 128;
+      const rowsPerScan = Math.floor(h / scanlines);
+      for (let i = 0; i < scanlines; i++) {
+        const startY = i * rowsPerScan;
+        let rowBright = 0, samples = 0;
+        for (let y = startY; y < startY + rowsPerScan && y < h; y++) {
+          for (let x = 0; x < w; x += 4) {
+            const idx = (y * w + x) * 4;
+            rowBright += data[idx] * 0.299 + data[idx+1] * 0.587 + data[idx+2] * 0.114;
+            samples++;
+          }
+        }
+        this.visualWave[i] = lerp(this.visualWave[i], (rowBright / samples / 255) * 0.8, 0.2);
+      }
+      this.visualEnergy = (this.brightness * 0.5 + this.motionEnergy * 0.5);
+    },
+
+    update() {
+      if (!this.active) return;
+      if (this.type === 'video' && this.source) {
+        if (this.source.readyState >= 2) {
+          this.ctx.drawImage(this.source, 0, 0, 256, 256);
+          this.analyzeFrame();
+        }
+      } else if (this.type === 'image') {
+        for (let i = 0; i < this.visualWave.length; i++) {
+          this.visualWave[i] = lerp(this.visualWave[i], this.visualWave[i] * (0.95 + Math.sin(state.time * 2 + i * 0.1) * 0.05), 0.05);
+        }
+        this.visualEnergy = lerp(this.visualEnergy, this.brightness * 0.4, 0.05);
+      } else if (this.type === 'document') {
+        if (this.textStream.length > 0) {
+          const wordsPerSecond = 4;
+          const targetCursor = Math.floor(state.time * wordsPerSecond) % this.textStream.length;
+          this.textCursor = targetCursor;
+        }
+      }
+    },
+
+    drawProjection(c) {
+      if (!this.active || !this.source) return;
+      if (this.type !== 'image' && this.type !== 'video') return;
+
+      c.save();
+      c.translate(CX, CY);
+      const projRadius = 180 + this.brightness * 40;
+      const rotSpeed = this.type === 'video' ? 0.1 : 0.05;
+      c.rotate(state.time * rotSpeed);
+
+      c.beginPath();
+      c.arc(0, 0, projRadius + 20, 0, TAU);
+      c.arc(0, 0, projRadius - 20, 0, TAU, true);
+      c.clip();
+
+      c.globalAlpha = 0.4 + this.brightness * 0.4;
+      c.globalCompositeOperation = 'screen';
+
+      const size = 256;
+      const circumference = projRadius * TAU;
+      const scale = circumference / size;
+
+      c.save();
+      c.rotate(-Math.PI / 2);
+      c.drawImage(this.source, -size * scale / 2, -projRadius, size * scale, size * scale);
+      c.restore();
+
+      c.globalCompositeOperation = 'source-over';
+      c.strokeStyle = `rgba(${this.dominantColor[0]},${this.dominantColor[1]},${this.dominantColor[2]},${0.2 + this.motionEnergy * 0.3})`;
+      c.lineWidth = 1;
+      for (let i = 0; i < 8; i++) {
+        const angle = (state.time * 0.5 + i * 0.8) % TAU;
+        c.beginPath();
+        c.arc(0, 0, projRadius, angle, angle + 0.3);
+        c.stroke();
+      }
+      c.restore();
+    },
+
+    getDocumentText() {
+      if (this.type !== 'document' || this.textStream.length === 0) return null;
+      const windowSize = 40;
+      const start = Math.max(0, this.textCursor - windowSize);
+      const end = this.textCursor + 1;
+      return this.textStream.slice(start, end).join(' ');
+    }
+  };
+
+  const combinedWave = new Float32Array(128);
+  function combineAudioSources() {
+    // Prioritize Microphone if active, otherwise fallback to idle simulation
+    if (microphone.active) {
+      state.audio.bass = microphone.bass;
+      state.audio.mid = microphone.mid;
+      state.audio.treble = microphone.treble;
+      state.audio.amp = microphone.amp;
+      state.audio.beat = microphone.beat;
+      state.audio.beatDecay = microphone.beatDecay;
+      combinedWave.set(microphone.wave);
+    } else {
+      state.audio.bass = lerp(state.audio.bass, 0.05 + Math.sin(state.time * 1.5) * 0.03, 0.1);
+      state.audio.mid = lerp(state.audio.mid, 0.05, 0.1);
+      state.audio.treble = lerp(state.audio.treble, 0.05, 0.1);
+      state.audio.amp = 0.05;
+      state.audio.beat *= 0.9;
+      for (let i = 0; i < 128; i++) {
+        const idle = (Math.sin(state.time * 1.5 + i * 0.1) * 0.5 + 0.5) * 0.05;
+        combinedWave[i] = lerp(combinedWave[i], idle, 0.05);
+      }
+    }
+  }
+
+  function setState(s) {
+    if (state.current === s) return;
+
+    // If leaving MUSIC mode, stop mic
+    if (state.current === STATES.MUSIC && s !== STATES.MUSIC) {
+      microphone.stop();
+    }
+
+    state.target = s;
+    state.transition = 0;
+    state.targetColor = STATE_COLORS[s];
+    document.getElementById('status').innerHTML = `<span class="dot"></span>H.E.A.R.T // ${s} MODE`;
+
+    if (s === STATES.EMERGENCY) triggerFlash(0.8);
+
+    state.current = s;
+  }
+
+  function triggerFlash(intensity = 1) {
+    state.flash = intensity;
+    const f = document.getElementById('flash');
+    f.style.transition = 'none';
+    f.style.opacity = intensity;
+    requestAnimationFrame(() => {
+      f.style.transition = 'opacity 1.2s ease-out';
+      f.style.opacity = 0;
+    });
+  }
+
+  window.addEventListener('mousemove', e => {
+    state.mouse.x = e.clientX;
+    state.mouse.y = e.clientY;
+    state.mouse.active = true;
+  });
+
+  window.addEventListener('keydown', e => {
+    uiSound.init();
+    const k = e.key.toLowerCase();
+    const map = {
+      '1': STATES.IDLE,
+      '5': STATES.MUSIC, // Key 5 triggers Music/Mic Mode
+      '7': STATES.CYBER,
+      '8': STATES.SLEEP,
+      '9': STATES.EMERGENCY
+    };
+    if (map[k]) {
+      setState(map[k]);
+      uiSound.playSmoothTransition();
+
+      // Special logic for Key 5
+      if (k === '5') {
+        microphone.start();
+      }
+    }
+    if (k === 'm') {
+      uiSound.init();
+      document.getElementById('fileInput').click();
+    }
+  });
+
+  window.addEventListener('click', () => uiSound.init(), { once: true });
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '*/*';
+  fileInput.id = 'fileInput';
+  fileInput.style.display = 'none';
+  document.body.appendChild(fileInput);
+
+  fileInput.addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    uiSound.init();
+    await mediaTunnel.load(file);
+    fileInput.value = '';
+  });
+
+  const reactor = {
+    rings: [],
+    coreRadius: 35,
+    rotation: 0,
+    pulse: 0,
+    assembly: 0,
+    energyFlow: 0,
+    waveCoords: new Float32Array(128 * 2),
+    init() {
+      this.rings = [
+        { id: 'inner1', radius: 60, thickness: 1.5, speed: 0.004, waveAmp: 8, segments: 0, gap: 0, assembled: 0, type: 'continuous' },
+        { id: 'inner2', radius: 85, thickness: 1, speed: -0.006, waveAmp: 6, segments: 0, gap: 0, assembled: 0, type: 'continuous' },
+        { id: 'mid1', radius: 120, thickness: 2.5, speed: 0.003, waveAmp: 4, segments: 12, gap: 0.15, assembled: 0, type: 'segmented' },
+        { id: 'mid2', radius: 155, thickness: 2, speed: -0.004, waveAmp: 3, segments: 16, gap: 0.1, assembled: 0, type: 'segmented' },
+        { id: 'outer1', radius: 210, thickness: 1.5, speed: 0.002, waveAmp: 1, segments: 24, gap: 0.05, assembled: 0, type: 'engineering' },
+        { id: 'outer2', radius: 260, thickness: 1, speed: -0.0015, waveAmp: 0.5, segments: 36, gap: 0.03, assembled: 0, type: 'engineering' }
+      ];
+    },
+    update(dt) {
+      this.rotation += dt * 0.1;
+      const basePulse = Math.sin(state.time * 1.5) * 0.5 + 0.5;
+      const audioPulse = state.audio.bass * 0.5 + mediaTunnel.brightness * 0.5;
+      this.pulse = lerp(this.pulse, basePulse + audioPulse, dt * 2);
+
+      if (state.bootPhase >= 2) {
+        for (let i = 0; i < this.rings.length; i++) {
+          this.rings[i].assembled = lerp(this.rings[i].assembled, 1, dt * 0.8);
+        }
+        this.assembly = lerp(this.assembly, 1, dt * 0.5);
+      }
+      if (state.bootPhase >= 3) {
+        this.energyFlow = lerp(this.energyFlow, 1, dt * 0.4);
+      }
+    },
+    draw(c) {
+      let coreCol = state.color.core;
+      let glowCol = state.color.glow;
+      let accentCol = state.color.accent;
+
+      if (mediaTunnel.active && (mediaTunnel.type === 'image' || mediaTunnel.type === 'video')) {
+        const mediaMix = 0.4 + mediaTunnel.brightness * 0.3;
+        const mc = mediaTunnel.dominantColor;
+        coreCol = [
+          Math.floor(lerp(coreCol[0], Math.min(255, mc[0] + 80), mediaMix)),
+          Math.floor(lerp(coreCol[1], Math.min(255, mc[1] + 80), mediaMix)),
+          Math.floor(lerp(coreCol[2], Math.min(255, mc[2] + 80), mediaMix))
+        ];
+        glowCol = [
+          Math.floor(lerp(glowCol[0], mc[0], mediaMix * 0.8)),
+          Math.floor(lerp(glowCol[1], mc[1], mediaMix * 0.8)),
+          Math.floor(lerp(glowCol[2], mc[2], mediaMix * 0.8))
+        ];
+        accentCol = [
+          Math.floor(lerp(accentCol[0], mc[0], mediaMix * 0.6)),
+          Math.floor(lerp(accentCol[1], mc[1], mediaMix * 0.6)),
+          Math.floor(lerp(accentCol[2], mc[2], mediaMix * 0.6))
+        ];
+      }
+
+      const breath = state.audio.bass * 15; // Increased breath for music sync
+      const currentCoreRadius = this.coreRadius + breath + (this.pulse * 2);
+      const coreGlowR = currentCoreRadius * 3;
+
+      const coreGrad = c.createRadialGradient(CX, CY, 0, CX, CY, coreGlowR);
+      coreGrad.addColorStop(0, `rgba(${coreCol[0]}, ${coreCol[1]}, ${coreCol[2]}, ${0.9 * state.reactorOnline})`);
+      coreGrad.addColorStop(0.2, `rgba(${glowCol[0]}, ${glowCol[1]}, ${glowCol[2]}, ${0.4 * state.reactorOnline})`);
+      coreGrad.addColorStop(0.5, `rgba(${accentCol[0]}, ${accentCol[1]}, ${accentCol[2]}, ${0.1 * state.reactorOnline})`);
+      coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
+
+      c.fillStyle = coreGrad;
+      c.beginPath();
+      c.arc(CX, CY, coreGlowR, 0, TAU);
+      c.fill();
+
+      c.fillStyle = `rgba(${coreCol[0]}, ${coreCol[1]}, ${coreCol[2]}, ${state.reactorOnline})`;
+      c.beginPath();
+      c.arc(CX, CY, currentCoreRadius, 0, TAU);
+      c.fill();
+
+      mediaTunnel.drawProjection(c);
+
+      c.save();
+      c.translate(CX, CY);
+
+      for (let i = 0; i < this.rings.length; i++) {
+        const r = this.rings[i];
+        if (r.assembled < 0.01) continue;
+
+        const rot = this.rotation * r.speed * 10 + (i * 0.5);
+        const waveAmp = r.waveAmp * state.audio.mid * 2; // Amplify wave for music
+
+        c.save();
+        c.rotate(rot);
+
+        if (r.type === 'continuous') {
+          c.strokeStyle = `rgba(${glowCol[0]}, ${glowCol[1]}, ${glowCol[2]}, ${0.8 * r.assembled * state.reactorOnline})`;
+          c.lineWidth = r.thickness + (state.audio.treble * 2);
+          c.shadowColor = `rgba(${glowCol[0]}, ${glowCol[1]}, ${glowCol[2]}, 0.8)`;
+          c.shadowBlur = 10 + state.audio.treble * 15;
+
+          const points = 128;
+          for (let j = 0; j < points; j++) {
+            const angle = (j / points) * TAU;
+            const waveIdx = Math.floor((j / points) * combinedWave.length);
+            const waveVal = combinedWave[waveIdx];
+            const deform = waveVal * waveAmp;
+            const breathOffset = Math.sin(state.time * 2 + angle * 3) * 1;
+            const currentR = r.radius + deform + breathOffset + breath * 0.3;
+
+            this.waveCoords[j * 2] = Math.cos(angle) * currentR;
+            this.waveCoords[j * 2 + 1] = Math.sin(angle) * currentR;
+          }
+
+          c.beginPath();
+          const lastX = this.waveCoords[(points - 1) * 2];
+          const lastY = this.waveCoords[(points - 1) * 2 + 1];
+          const firstX = this.waveCoords[0];
+          const firstY = this.waveCoords[1];
+          c.moveTo((lastX + firstX) / 2, (lastY + firstY) / 2);
+
+          for (let j = 0; j < points; j++) {
+            const currX = this.waveCoords[j * 2];
+            const currY = this.waveCoords[j * 2 + 1];
+            const nextX = this.waveCoords[((j + 1) % points) * 2];
+            const nextY = this.waveCoords[((j + 1) % points) * 2 + 1];
+            const midX = (currX + nextX) / 2;
+            const midY = (currY + nextY) / 2;
+            c.quadraticCurveTo(currX, currY, midX, midY);
+          }
+          c.closePath();
+          c.stroke();
+
+        } else {
+          c.strokeStyle = `rgba(${r.type === 'engineering' ? accentCol[0] : glowCol[0]}, ${r.type === 'engineering' ? accentCol[1] : glowCol[1]}, ${r.type === 'engineering' ? accentCol[2] : glowCol[2]}, ${0.6 * r.assembled * state.reactorOnline})`;
+          c.lineWidth = r.thickness;
+          c.shadowColor = `rgba(${glowCol[0]}, ${glowCol[1]}, ${glowCol[2]}, 0.5)`;
+          c.shadowBlur = r.type === 'engineering' ? 2 : 8;
+
+          const segAngle = TAU / r.segments;
+          const gapAngle = segAngle * r.gap;
+          const arcAngle = segAngle - gapAngle;
+
+          for (let s = 0; s < r.segments; s++) {
+            const startA = s * segAngle + gapAngle / 2;
+            const midA = startA + arcAngle / 2;
+            const waveIdx = Math.floor((midA / TAU) * combinedWave.length);
+            const waveVal = combinedWave[waveIdx];
+            const deform = waveVal * waveAmp * 0.5;
+            const currentR = r.radius + deform + breath * 0.2;
+
+            c.beginPath();
+            c.arc(0, 0, currentR, startA, startA + arcAngle);
+            c.stroke();
+
+            if (r.type === 'engineering' && s % 3 === 0) {
+              c.strokeStyle = `rgba(${accentCol[0]}, ${accentCol[1]}, ${accentCol[2]}, ${0.3 * r.assembled * state.reactorOnline})`;
+              c.lineWidth = 1;
+              c.beginPath();
+              c.moveTo(Math.cos(startA) * (currentR - 3), Math.sin(startA) * (currentR - 3));
+              c.lineTo(Math.cos(startA) * (currentR + 3), Math.sin(startA) * (currentR + 3));
+              c.stroke();
+
+              c.strokeStyle = `rgba(${r.type === 'engineering' ? accentCol[0] : glowCol[0]}, ${r.type === 'engineering' ? accentCol[1] : glowCol[1]}, ${r.type === 'engineering' ? accentCol[2] : glowCol[2]}, ${0.6 * r.assembled * state.reactorOnline})`;
+              c.lineWidth = r.thickness;
+            }
+          }
+        }
+        c.restore();
+      }
+
+      if (this.energyFlow > 0.1) {
+        c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < this.rings.length; i++) {
+          const r = this.rings[i];
+          if (r.type !== 'continuous') continue;
+          const flowSpeed = 0.2 + i * 0.1;
+          const flowAngle = state.time * flowSpeed;
+          const arcLen = 0.5 + state.audio.mid * 0.3;
+
+          c.strokeStyle = `rgba(${coreCol[0]}, ${coreCol[1]}, ${coreCol[2]}, ${0.4 * this.energyFlow * state.reactorOnline})`;
+          c.lineWidth = r.thickness + 1;
+          c.shadowColor = `rgba(${coreCol[0]}, ${coreCol[1]}, ${coreCol[2]}, 1)`;
+          c.shadowBlur = 15;
+
+          c.beginPath();
+          c.arc(0, 0, r.radius, flowAngle, flowAngle + arcLen);
+          c.stroke();
+        }
+        c.globalCompositeOperation = 'source-over';
+      }
+      c.restore();
+    }
+  };
+
+  const hudPanels = [];
+  class HUDPanel {
+    constructor(config) {
+      Object.assign(this, config);
+      this.deploy = 0;
+      this.visible = false;
+      this.contexts = this.contexts || [STATES.IDLE];
+    }
+    update(dt) {
+      const shouldShow = state.bootComplete && this.contexts.includes(state.current);
+      this.visible = shouldShow;
+      this.deploy = lerp(this.deploy, shouldShow ? 1 : 0, dt * 3);
+    }
+    draw(c) {
+      if (this.deploy < 0.01) return;
+      c.save();
+      c.globalAlpha = this.deploy;
+
+      const angle = this.angle || 0;
+      const dist = (this.distance || 320) * easeOutBack(Math.min(1, this.deploy * 1.2));
+      const px = CX + Math.cos(angle) * dist;
+      const py = CY + Math.sin(angle) * dist;
+
+      c.strokeStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},${0.3 * this.deploy})`;
+      c.lineWidth = 1;
+      c.setLineDash([4, 4]);
+      c.lineDashOffset = -state.time * 20;
+      c.beginPath();
+      const lineStartDist = 260;
+      c.moveTo(CX + Math.cos(angle) * lineStartDist, CY + Math.sin(angle) * lineStartDist);
+      c.lineTo(px, py);
+      c.stroke();
+      c.setLineDash([]);
+
+      c.translate(px, py);
+      const w = this.width || 200;
+      const h = this.height || 100;
+
+      c.fillStyle = `rgba(10,20,30,${0.4 * this.deploy})`;
+      c.strokeStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},${0.6 * this.deploy})`;
+      c.lineWidth = 1;
+      c.shadowColor = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},0.5)`;
+      c.shadowBlur = 8;
+
+      c.beginPath();
+      const corner = 10;
+      c.moveTo(-w/2 + corner, -h/2);
+      c.lineTo(w/2 - corner, -h/2);
+      c.lineTo(w/2, -h/2 + corner);
+      c.lineTo(w/2, h/2 - corner);
+      c.lineTo(w/2 - corner, h/2);
+      c.lineTo(-w/2 + corner, h/2);
+      c.lineTo(-w/2, h/2 - corner);
+      c.lineTo(-w/2, -h/2 + corner);
+      c.closePath();
+      c.fill();
+      c.stroke();
+      c.shadowBlur = 0;
+
+      c.fillStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},${0.9 * this.deploy})`;
+      c.font = '10px Consolas, monospace';
+      c.textAlign = 'left';
+      c.fillText(this.title || 'MODULE', -w/2 + 10, -h/2 + 15);
+
+      c.strokeStyle = `rgba(${state.color.accent[0]},${state.color.accent[1]},${state.color.accent[2]},${0.8 * this.deploy})`;
+      c.lineWidth = 1.5;
+      const b = 6;
+      c.beginPath();
+      c.moveTo(-w/2, -h/2 + b); c.lineTo(-w/2, -h/2); c.lineTo(-w/2 + b, -h/2);
+      c.moveTo(w/2 - b, -h/2); c.lineTo(w/2, -h/2); c.lineTo(w/2, -h/2 + b);
+      c.moveTo(w/2, h/2 - b); c.lineTo(w/2, h/2); c.lineTo(w/2 - b, h/2);
+      c.moveTo(-w/2 + b, h/2); c.lineTo(-w/2, h/2); c.lineTo(-w/2, h/2 - b);
+      c.stroke();
+
+      if (this.render) {
+        c.save();
+        c.translate(-w/2 + 10, -h/2 + 28);
+        this.render(c, w - 20, h - 40, this.deploy);
+        c.restore();
+      }
+      c.restore();
+    }
+  }
+
+  function renderSpectrum(c, w, h) {
+    const bars = 32;
+    const barW = w / bars - 1;
+    for (let i = 0; i < bars; i++) {
+      let v;
+      // Use Microphone data if active, otherwise simulate
+      if (microphone.active && microphone.freq) {
+        const idx = Math.floor((i / bars) * microphone.freq.length * 0.5);
+        v = microphone.freq[idx] / 255;
+      } else {
+        v = (Math.sin(state.time * 3 + i * 0.3) * 0.5 + 0.5) * 0.4;
+      }
+      const bh = v * h * (1 + state.audio.beat * 0.5);
+      const grad = c.createLinearGradient(0, h - bh, 0, h);
+      grad.addColorStop(0, `rgba(${state.color.core[0]},${state.color.core[1]},${state.color.core[2]},0.9)`);
+      grad.addColorStop(1, `rgba(${state.color.accent[0]},${state.color.accent[1]},${state.color.accent[2]},0.4)`);
+      c.fillStyle = grad;
+      c.fillRect(i * (barW + 1), h - bh, barW, bh);
+    }
+  }
+
+  function renderDiagnostics(c, w, h) {
+    c.fillStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},0.8)`;
+    c.font = '9px Consolas, monospace';
+
+    let tunnelStatus = 'IDLE';
+    if (mediaTunnel.active) {
+      const type = mediaTunnel.type ? mediaTunnel.type.toUpperCase() : '?';
+      const name = mediaTunnel.fileName.length > 10 ? mediaTunnel.fileName.substring(0,10) + '...' : mediaTunnel.fileName;
+      tunnelStatus = `${type}: ${name}`;
+    } else if (microphone.active) {
+      tunnelStatus = 'MIC: LIVE INPUT';
+    }
+
+    const lines = [
+      `NEURAL CORE    [${state.reactorOnline > 0.9 ? 'ONLINE' : 'BOOT'}]`,
+      `REACTOR FLUX   [${(state.audio.amp * 100 || Math.sin(state.time)*20+50).toFixed(1)}%]`,
+      `STATE          [${state.current}]`,
+      `SYNC           [${(state.transition * 100).toFixed(0)}%]`,
+      `INPUT SOURCE   [${tunnelStatus}]`
+    ];
+    lines.forEach((l, i) => c.fillText(l, 0, i * 12 + 8));
+  }
+
+  function renderMediaFeed(c, w, h) {
+    if (!mediaTunnel.active && !microphone.active) {
+      c.fillStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},0.4)`;
+      c.font = '9px Consolas, monospace';
+      c.fillText('NO MEDIA IN TUNNEL', 0, 20);
+      c.fillText('PRESS [M] TO UPLOAD', 0, 35);
+      return;
+    }
+
+    if (microphone.active) {
+       c.fillStyle = `rgba(${state.color.core[0]},${state.color.core[1]},${state.color.core[2]},0.95)`;
+       c.font = 'bold 9px Consolas, monospace';
+       c.fillText(`SOURCE: MICROPHONE`, 0, 0);
+       c.fillStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},0.7)`;
+       c.font = '8px Consolas, monospace';
+       c.fillText(`BASS: ${(state.audio.bass * 100).toFixed(0)}%`, 0, 14);
+       c.fillText(`MID: ${(state.audio.mid * 100).toFixed(0)}%`, 0, 28);
+       c.fillText(`TREBLE: ${(state.audio.treble * 100).toFixed(0)}%`, 0, 42);
+       c.fillText(`AMP: ${(state.audio.amp * 100).toFixed(0)}%`, 0, 56);
+       return;
+    }
+
+    const type = mediaTunnel.type || 'UNKNOWN';
+    c.fillStyle = `rgba(${state.color.core[0]},${state.color.core[1]},${state.color.core[2]},0.95)`;
+    c.font = 'bold 9px Consolas, monospace';
+    c.fillText(`TYPE: ${type.toUpperCase()}`, 0, 0);
+
+    c.fillStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},0.7)`;
+    c.font = '8px Consolas, monospace';
+    const name = mediaTunnel.fileName;
+    const displayName = name.length > 22 ? name.substring(0, 22) + '...' : name;
+    c.fillText(`FILE: ${displayName}`, 0, 14);
+    c.fillText(`BRIGHTNESS: ${(mediaTunnel.brightness * 100).toFixed(0)}%`, 0, 30);
+
+    if (type === 'video' || type === 'image') {
+      c.fillText(`MOTION: ${(mediaTunnel.motionEnergy * 100).toFixed(0)}%`, 0, 44);
+      c.fillText(`ENERGY: ${(mediaTunnel.visualEnergy * 100).toFixed(0)}%`, 0, 58);
+
+      const dc = mediaTunnel.dominantColor;
+      c.fillStyle = `rgb(${dc[0]},${dc[1]},${dc[2]})`;
+      c.fillRect(w - 20, 0, 15, 15);
+      c.strokeStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},0.8)`;
+      c.strokeRect(w - 20, 0, 15, 15);
+    } else if (type === 'document') {
+      c.fillText(`WORDS: ${mediaTunnel.textStream.length}`, 0, 44);
+      c.fillText(`CURSOR: ${mediaTunnel.textCursor}`, 0, 58);
+      const excerpt = mediaTunnel.getDocumentText();
+      if (excerpt) {
+        c.fillStyle = `rgba(${state.color.core[0]},${state.color.core[1]},${state.color.core[2]},0.7)`;
+        c.font = 'italic 7px Consolas, monospace';
+        const displayText = excerpt.length > 38 ? excerpt.substring(0, 38) + '...' : excerpt;
+        c.fillText(`"${displayText}"`, 0, 72);
+      }
+    } else if (type === 'audio-file') {
+      c.fillText(`AUDIO: UPLOADED`, 0, 44);
+    }
+
+    if (mediaTunnel.aiData) {
+      const ai = mediaTunnel.aiData;
+      c.strokeStyle = `rgba(${state.color.accent[0]},${state.color.accent[1]},${state.color.accent[2]},0.5)`;
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(0, 80);
+      c.lineTo(w, 80);
+      c.stroke();
+
+      c.fillStyle = `rgba(${state.color.core[0]},${state.color.core[1]},${state.color.core[2]},0.95)`;
+      c.font = 'bold 8px Consolas, monospace';
+      c.fillText('--- PYTHON AI CORE ---', 0, 92);
+
+      c.fillStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},0.8)`;
+      c.font = '7px Consolas, monospace';
+      c.fillText(`STATUS: ${ai.status || 'UNKNOWN'}`, 0, 104);
+
+      const summary = ai.message || ai.ai_summary || 'No data';
+      c.fillText(`AI: ${summary.substring(0, 32)}`, 0, 116);
+    }
+  }
+
+  function renderCode(c, w, h) {
+    c.fillStyle = `rgba(${state.color.glow[0]},${state.color.glow[1]},${state.color.glow[2]},0.7)`;
+    c.font = '8px Consolas, monospace';
+
+    let lines;
+    if (mediaTunnel.active && mediaTunnel.type === 'document') {
+      const windowSize = 9;
+      const cursor = mediaTunnel.textCursor;
+      const start = Math.max(0, cursor - windowSize);
+      const end = cursor;
+      const words = mediaTunnel.textStream.slice(start, end);
+
+      lines = [
+        '> media.tunnel.consume()',
+        `  type: ${mediaTunnel.type}`,
+        `  file: ${mediaTunnel.fileName}`,
+        '  [READING STREAM]',
+        '  ---------------------'
+      ];
+      words.forEach((word, i) => {
+        if (i < 5) lines.push(`  > ${word}`);
+      });
+      lines.push('> _');
+    } else {
+      lines = [
+        '> heart.init()',
+        '  loading neural matrix...',
+        '  [OK] synaptic mesh v4.2.1',
+        '> reactor.ignite()',
+        '  plasma flow: stable',
+        '  containment: 99.8%',
+        '> ai.state("idle")',
+        '  awaiting input...',
+        '> _'
+      ];
+    }
+
+    const visible = Math.floor((state.time * 2) % (lines.length + 4));
+    for (let i = 0; i < Math.min(visible, lines.length); i++) {
+      c.fillText(lines[i], 0, i * 10 + 8);
+    }
+  }
+
+  function initPanels() {
+    hudPanels.length = 0;
+    hudPanels.push(new HUDPanel({ title: 'MEDIA FEED', angle: -Math.PI * 0.75, distance: 360, width: 220, height: 120, contexts: [STATES.IDLE, STATES.CYBER, STATES.MUSIC], render: renderMediaFeed }));
+    hudPanels.push(new HUDPanel({ title: 'AUDIO SPECTRUM', angle: Math.PI * 0.25, distance: 360, width: 220, height: 100, contexts: [STATES.MUSIC], render: renderSpectrum }));
+    hudPanels.push(new HUDPanel({ title: 'SYSTEM DIAGNOSTICS', angle: Math.PI * 0.75, distance: 360, width: 220, height: 100, contexts: [STATES.IDLE, STATES.CYBER], render: renderDiagnostics }));
+    hudPanels.push(new HUDPanel({ title: 'TERMINAL', angle: 0, distance: 380, width: 200, height: 140, contexts: [STATES.IDLE], render: renderCode }));
+  }
+
+  function playIntroMusic() {
+    if (state.jarvisPlayed) return;
+    state.jarvisPlayed = true;
+
+    if (!uiSound.ctx) uiSound.init();
+    if (uiSound.ctx.state === 'suspended') uiSound.ctx.resume();
+
+    try {
+      if (!audio.introSource) {
+        // This is just for the boot sound, not the main logic
+      }
+
+      jarvisIntro.currentTime = 0;
+      jarvisIntro.volume = 0.6;
+
+      const playPromise = jarvisIntro.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(err => {
+          console.warn('Autoplay blocked. Click anywhere to start intro music.', err);
+        });
+      }
+    } catch(e) {
+      console.warn("Could not connect intro audio", e);
+    }
+  }
+
+  const boot = {
+    startTime: 0, running: true,
+    start() {
+      this.startTime = performance.now();
+      showBootText('INITIALIZING NEURAL MATRIX');
+      uiSound.playBootSound();
+    },
+    update(dt) {
+      if (!this.running) return;
+      const t = (performance.now() - this.startTime) / 1000;
+      state.bootTime = t;
+
+      if (t < 2.5) {
+        state.bootPhase = 1;
+      } else if (t < 4) {
+        state.bootPhase = 2;
+        state.reactorOnline = smoothstep(0, 1, (t - 2.5) / 1.5);
+        state.bloomIntensity = 1.2 - (t - 2.5) * 0.4;
+
+        if (t > 2.6 && !state.jarvisPlayed) {
+          triggerFlash(0.6);
+          showBootText('REACTOR IGNITION');
+          uiSound.playSmoothTransition();
+          playIntroMusic();
+        }
+      } else if (t < 7) {
+        state.reactorOnline = 1;
+        if (t > 4.5) showBootText('MECHANICAL ASSEMBLY');
+      } else if (t < 9) {
+        state.bootPhase = 3;
+        if (t > 7.5) showBootText('ENERGY CHANNELS ACTIVATED');
+      } else if (t < 12) {
+        state.bootPhase = 4;
+        state.hudDeploy = smoothstep(0, 1, (t - 9) / 3);
+        if (t > 9.5) showBootText('HOLOGRAPHIC INTERFACE ONLINE');
+      } else {
+        state.bootPhase = 5;
+        state.bootComplete = true;
+        this.running = false;
+        hideBootText();
+        uiSound.playSystemReady();
+      }
+    }
+  };
+
+  function showBootText(text) {
+    const el = document.getElementById('bootText');
+    el.textContent = text;
+    el.style.opacity = 1;
+  }
+  function hideBootText() {
+    document.getElementById('bootText').style.opacity = 0;
+  }
+
+  function postProcess() {
+    blurCtx.clearRect(0, 0, blurCanvas.width, blurCanvas.height);
+    blurCtx.drawImage(mainCanvas, 0, 0, blurCanvas.width, blurCanvas.height);
+
+    fxCtx.save();
+    fxCtx.setTransform(1, 0, 0, 1, 0, 0);
+    fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+
+    const dynamicBloom = state.bloomIntensity * 0.4 + state.audio.amp * 0.3;
+    if (dynamicBloom > 0.01) {
+      fxCtx.globalAlpha = dynamicBloom;
+      fxCtx.filter = 'blur(8px)';
+      fxCtx.drawImage(blurCanvas, 0, 0, blurCanvas.width, blurCanvas.height, 0, 0, fxCanvas.width, fxCanvas.height);
+      fxCtx.filter = 'none';
+    }
+    fxCtx.globalAlpha = 1;
+
+    const caOffset = state.audio.bass * 4 * DPR;
+    if (caOffset > 0.5) {
+      fxCtx.globalCompositeOperation = 'screen';
+      fxCtx.globalAlpha = 0.08 + state.audio.bass * 0.12;
+      fxCtx.drawImage(mainCanvas, caOffset, 0, mainCanvas.width, mainCanvas.height, 0, 0, fxCanvas.width, fxCanvas.height);
+      fxCtx.globalAlpha = 1;
+    }
+    fxCtx.restore();
+  }
+
+  function updateClock() {
+    const d = new Date();
+    document.getElementById('clock').textContent =
+      `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  }
+
+  let lastTime = performance.now();
+  let frameCount = 0;
+
+  function tick(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    state.time += dt;
+    frameCount++;
+
+    state.transition = Math.min(1, state.transition + dt * 1.5);
+
+    // Smooth Color Transition
+    for (const k of ['core', 'glow', 'accent']) {
+      for (let i = 0; i < 3; i++) {
+        state.color[k][i] = lerp(state.color[k][i], state.targetColor[k][i], dt * 3);
+      }
+    }
+
+    microphone.update();
+    mediaTunnel.update();
+    combineAudioSources();
+
+    boot.update(dt);
+    reactor.update(dt);
+
+    for (const p of hudPanels) p.update(dt);
+
+    render();
+    if (frameCount % 30 === 0) updateClock();
+
+    requestAnimationFrame(tick);
+  }
+
+  function render() {
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    const bgPulse = state.audio.bass * 0.02;
+    ctx.fillStyle = `rgba(2, 6, 10, ${1 - bgPulse})`;
+    ctx.fillRect(0, 0, W, H);
+
+    drawBackgroundGrid(ctx);
+    reactor.draw(ctx);
+
+    for (const p of hudPanels) p.draw(ctx);
+    if (state.bootComplete) drawOuterFrame(ctx);
+
+    ctx.restore();
+    postProcess();
+  }
+
+  function drawBackgroundGrid(c) {
+    if (!state.bootComplete) return;
+    const col = state.color.glow;
+    const gridPulse = state.audio.bass * 0.02;
+    c.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${0.04 + gridPulse})`;
+    c.lineWidth = 1;
+    const gridSize = 60;
+    const offsetX = (state.time * 5) % gridSize;
+    for (let x = -gridSize + offsetX; x < W; x += gridSize) {
+      c.beginPath();
+      c.moveTo(x, 0); c.lineTo(x, H);
+      c.stroke();
+    }
+    for (let y = 0; y < H; y += gridSize) {
+      c.beginPath();
+      c.moveTo(0, y); c.lineTo(W, y);
+      c.stroke();
+    }
+
+    c.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${0.06 + gridPulse})`;
+    for (let r = 300; r < Math.max(W, H); r += 100) {
+      c.beginPath();
+      c.arc(CX, CY, r + state.audio.bass * 2, 0, TAU);
+      c.stroke();
+    }
+  }
+
+  function drawOuterFrame(c) {
+    const col = state.color.glow;
+    c.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.3)`;
+    c.lineWidth = 1;
+
+    c.save();
+    c.translate(CX, CY);
+    c.rotate(state.time * 0.05 * (1 + state.audio.mid * 3));
+    const r = Math.min(W, H) * 0.45;
+    c.beginPath();
+    c.arc(0, 0, r, 0, TAU);
+    c.stroke();
+
+    c.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.5)`;
+    for (let i = 0; i < 72; i++) {
+      const a = (i / 72) * TAU;
+      const inner = i % 6 === 0 ? r - 15 : r - 8;
+      c.beginPath();
+      c.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      c.stroke();
+    }
+
+    c.fillStyle = `rgba(${state.color.core[0]},${state.color.core[1]},${state.color.core[2]},0.8)`;
+    c.font = '10px Consolas, monospace';
+    c.textAlign = 'center';
+    const labels = ['N', 'E', 'S', 'W'];
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * TAU - Math.PI / 2;
+      c.fillText(labels[i], Math.cos(a) * (r + 20), Math.sin(a) * (r + 20) + 3);
+    }
+    c.restore();
+
+    c.save();
+    c.translate(CX, CY);
+    c.rotate(-state.time * 0.08 * (1 + state.audio.mid * 3));
+    c.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.2)`;
+    c.beginPath();
+    c.arc(0, 0, r - 30, 0, TAU);
+    c.stroke();
+    c.restore();
+  }
+
+  reactor.init();
+  initPanels();
+  boot.start();
+  updateClock();
+  requestAnimationFrame(tick);
+
+  window.HEART = { state, setState, reactor, microphone, mediaTunnel, uiSound, jarvisIntro };
+})();
+</script>
+</body>
+</html>

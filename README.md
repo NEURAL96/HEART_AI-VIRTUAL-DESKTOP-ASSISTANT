@@ -796,11 +796,11 @@ It is to build a unified intelligence layer between the user and the operating s
 ## SONIKA BHARDWAJ
 ### NEURAL96| AI & CYBERSECURITY ENGINEERING
 
-Python Developer • AI Enthusiast • Cybersecurity Engineer
+Python Developer • AI Enthusiast 
 
 Building intelligent systems at the intersection of AI, automation, and security.
 
-[![GitHub](https://img.shields.io/badge/GitHub-D3V1L96-181717?style=for-the-badge&logo=github)](https://github.com/NEURAL96)
+[![GitHub](https://img.shields.io/badge/GitHub-NEURAL96-181717?style=for-the-badge&logo=github)](https://github.com/NEURAL96)
 
 </div>
 
